@@ -1,29 +1,42 @@
 package com.example.phonerecorderplugin;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 
+import android.Manifest;
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.Settings;
 import android.telecom.Call;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.File;
 import java.text.BreakIterator;
+import java.util.List;
+
+import listener.RecorderFileListener;
+import listener.UploadHelper;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
     private TextView tvStartService, tvDestroyService;
-    private Button btnPlay,btnStop,btnStartService,btnStopService;
-    //手机品牌
-    public final String HUAWEI="HUAWEI";
-    public final String XIAOMI="XIAOMI";
-    public final String OPPO="OPPO";
-    public final String VIVO="VIVO";
-    public final String SAMSUNG="SAMSUNG";
-    public final String MEIZU="MEIZU";
+    private Button btnPlay, btnStop, btnStartService, btnStopService;
+    private final String TAG = getClass().getSimpleName();
+    public static final int CODE_READ_PHONE_STATE = 0;
+    public static final int CODE_READ_CALL_LOG = 1;
+    public static final int CODE_WRITE_EXTERNAL_STORAGE = 2;
+    public static final int CODE_READ_EXTERNAL_STORAGE = 3;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -39,13 +52,25 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         btnStartService.setOnClickListener(this);
         btnStopService.setOnClickListener(this);
     }
+
     private void initView() {
-        tvStartService =findViewById(R.id.tv_start_service);
-        tvDestroyService =findViewById(R.id.tv_destroy_service);
-        btnStartService=findViewById(R.id.btn_start_service);
-        btnStopService=findViewById(R.id.btn_stop_service);
-        btnPlay=findViewById(R.id.btn_play);
-        btnStop=findViewById(R.id.btn_stop);
+        tvStartService = findViewById(R.id.tv_start_service);
+        tvDestroyService = findViewById(R.id.tv_destroy_service);
+        btnStartService = findViewById(R.id.btn_start_service);
+        btnStopService = findViewById(R.id.btn_stop_service);
+        btnPlay = findViewById(R.id.btn_play);
+        btnStop = findViewById(R.id.btn_stop);
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        UploadHelper.setRecorderFileListener(new RecorderFileListener() {
+            @Override
+            public void onUploadRecorder(File file) {
+                Log.e(TAG, "新通话录音" + file.getAbsolutePath());
+            }
+        });
     }
 
     /**
@@ -55,9 +80,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
      */
     @Override
     public void onClick(View v) {
-        switch (v.getId()){
+        switch (v.getId()) {
             case R.id.btn_start_service:
-                startCallService();
+                if (allPermissionsPass(this)){
+                    startCallService();
+                }else {
+                    verifyPermissions(this);
+                }
                 break;
             case R.id.btn_stop_service:
                 stopCallService();
@@ -70,54 +99,132 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                 break;
         }
     }
-    private void startCallService(){
-        Intent intent=new Intent(this,CallService.class);
+
+    private void startCallService() {
+        Intent intent = new Intent(this, CallService.class);
         startService(intent);
     }
-    private void stopCallService(){
-        Intent intent=new Intent(this, CallService.class);
+
+    private void stopCallService() {
+        Intent intent = new Intent(this, CallService.class);
         stopService(intent);
     }
 
-    /**
-     * @return 手机品牌
-     */
-    public String getDeviceBrand(){
-        return Build.BRAND;
+    private static String[] requestPermissions = {
+            //电话状态
+            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.READ_CALL_LOG,
+            //API23以上不仅要在manifest中声明读写权限，还要动态申请
+            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+    };
+
+    //动态申请权限,四个权限都允许则可以启动服务监听通话录音。
+    public void verifyPermissions(Activity activity) {
+            if (!allPermissionsPass(activity)) {
+                ActivityCompat.requestPermissions(activity, requestPermissions, CODE_READ_PHONE_STATE);
+            }
+        }
+
+
+    public boolean allPermissionsPass(Activity activity) {
+        boolean isPass = false;
+        for (String request : requestPermissions) {
+            int permission = ActivityCompat.checkSelfPermission(activity, request);
+            if (permission == PackageManager.PERMISSION_GRANTED) {
+                isPass = true;
+            } else {
+                isPass = false;
+                break;
+            }
+        }
+        return isPass;
+
     }
 
     /**
-     * @return 通话录音的保存路径
+     * Callback for the result from requesting permissions. This method
+     * is invoked for every call on {@link #requestPermissions(String[], int)}.
      */
-    public File getCallRecordPath(){
-        //获取手机品牌
-        String brand=Build.BRAND;
-        //获取通话录音文件路径
-        File mainFolder = Environment.getExternalStorageDirectory();
-        String subFolder = "";
-        switch (brand){
-            case HUAWEI:
-                subFolder="/Sounds/CallRecord";
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        switch (requestCode) {
+            case CODE_READ_PHONE_STATE:
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    if (allPermissionsPass(this)){
+                        startCallService();
+                    }else {verifyPermissions(this);}
+                } else {
+                    Toast.makeText(this,"请允许使用电话权限",Toast.LENGTH_LONG).show();
+//                    String[] permissionsHint = this.getResources().getStringArray(R.array.permissions);
+//                    openSettingActivity(this, permissionsHint[CODE_READ_PHONE_STATE]);
+                }
                 break;
-            case XIAOMI:
-                subFolder="/MIUI/sound_recorder/call_rec";
+            case CODE_READ_CALL_LOG:
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    //执行任务
+                    if (allPermissionsPass(this)){
+                        startCallService();
+                    }else {verifyPermissions(this);}
+                } else {
+                    Toast.makeText(this,"请允许获取通话记录权限",Toast.LENGTH_LONG).show();
+//                    String[] permissionsHint = this.getResources().getStringArray(R.array.permissions);
+//                    openSettingActivity(this, permissionsHint[CODE_READ_CALL_LOG]);
+                }
                 break;
-            case OPPO:
-                subFolder="Music/Recordings/Call Recordings";
+            case CODE_WRITE_EXTERNAL_STORAGE:
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    //执行任务
+                    if (allPermissionsPass(this)){
+                        startCallService();
+                    }else {verifyPermissions(this);}
+                } else {
+                    Toast.makeText(this,"请允许手机内存读取权限",Toast.LENGTH_LONG).show();
+//                    String[] permissionsHint = this.getResources().getStringArray(R.array.permissions);
+//                    openSettingActivity(this, permissionsHint[CODE_WRITE_EXTERNAL_STORAGE]);
+                }
                 break;
-            case VIVO:
-                break;
-            case SAMSUNG:
-                break;
-            case MEIZU:
+            case CODE_READ_EXTERNAL_STORAGE:
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    //执行任务
+                    if (allPermissionsPass(this)){
+                        startCallService();
+                    }else {verifyPermissions(this);}
+                } else {
+                    Toast.makeText(this,"请允许手机内存存储权限",Toast.LENGTH_LONG).show();
+//                    String[] permissionsHint = this.getResources().getStringArray(R.array.permissions);
+//                    openSettingActivity(this, permissionsHint[CODE_READ_EXTERNAL_STORAGE]);
+                }
                 break;
             default:
                 break;
         }
-        File callRecordPath=new File(mainFolder,subFolder);
-        return callRecordPath;
     }
 
+    private void openSettingActivity(final Activity activity, String message) {
+
+        showMessageOKCancel(activity, message, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                Intent intent = new Intent();
+                intent.setAction(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                Log.d(TAG, "getPackageName(): " + activity.getPackageName());
+                Uri uri = Uri.fromParts("package", activity.getPackageName(), null);
+                intent.setData(uri);
+                activity.startActivity(intent);
+            }
+        });
+    }
+
+    private static void showMessageOKCancel(final Activity context, String message, DialogInterface.OnClickListener okListener) {
+        new AlertDialog.Builder(context)
+                .setMessage(message)
+                .setPositiveButton("确定", okListener)
+                .setNegativeButton("取消", null)
+                .create()
+                .show();
+
+    }
 
 
 }

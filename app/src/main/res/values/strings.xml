@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">PhoneRecorderPlugin</string>
+    <string name="permission_read_phone_state_hint">请允许使用电话权限</string>
+    <string name="permission_read_call_log_hint">请允许获取通话记录权限</string>
+    <string name="permission_read_external_hint">请允许手机内存读取权限</string>
+    <string name="permission_write_external_hint">请允许手机内存存储权限</string>
 </resources>
+

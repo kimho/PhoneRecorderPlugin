@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.phonerecorderplugin">
+    <!--获取通话手机号码-->
+    <uses-permission android:name="android.permission.READ_CALL_LOG"/>
+    <!--查询通话状态权限-->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
+    <!--读写权限-->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+
 
     <application
         android:allowBackup="true"
